@@ -1,7 +1,9 @@
 const express = require('express');
-const app = express();
+const Promise = require('es6-promise').Promise;
 const { graphql, buildSchema } = require('graphql');
 const graphqlHTTP = require('express-graphql');
+
+const app = express();
 
 const flourishSchema = buildSchema(`
   type Query {
@@ -11,7 +13,7 @@ const flourishSchema = buildSchema(`
 
 var rootResolver = {
   hello: () => {
-    return 'Sweet it werkt!';
+    return Promise.resolve(()=>'Keks it werkt!').then(res => res());
   },
 };
 
