@@ -2,6 +2,7 @@ const express = require('express');
 const Promise = require('es6-promise').Promise;
 const { graphql, buildSchema } = require('graphql');
 const graphqlHTTP = require('express-graphql');
+const mysql = require('mysql');
 
 const app = express();
 
@@ -19,16 +20,48 @@ const flourishSchema = buildSchema(`
   }
 `);
 
+function connectDB(user, pass, db) {
+  return new Promise((resolve, reject) => {
+    var con = mysql.createConnection({
+      host: 'localhost',
+      user: user,
+      password: pass,
+      database: db
+    });
+
+    con.connect(function(err) {
+      if (err) {
+        return reject(err);
+      }
+      return resolve({
+        query: q => new Promise((resolve, reject) => {
+          con.query(q, function(err, result, fields) {
+            if (err) return reject(err);
+            return resolve(result);
+          });
+        })
+      });
+    });
+  });
+}
+
+function connectFlourishDB() {
+  return connectDB('root','root','flourishdb');
+}
+
 var rootResolver = {
   hello: () => {
-    return Promise.resolve(()=>'Keks it werkt!').then(res => res());
+    return connectFlourishDB()
+      .then(con => con.query('SELECT * FROM user;'))
+      .then(res => res[0].firstName)
+      .catch(err => `RIP ${err}`);
   },
   user: (args) => {
     return new Promise((resolve,reject) => {
       if (args.id == 1337) {
-        resolve({ firstName: "Seenbeen", lastName: "Na", userId: "1337", age: 21, favoriteAminal: "IS IT A BEAR" }); 
+        return resolve({ firstName: "Seenbeen", lastName: "Na", userId: "1337", age: 21, favoriteAminal: "IS IT A BEAR" }); 
       }
-      resolve({ firstName: "Unknown", lastName: "Unknown", userId: "Unknown", age: 0 });
+      return resolve({ firstName: "Unknown", lastName: "Unknown", userId: "Unknown", age: 0 });
     }).then(res => res);
   }
 };
