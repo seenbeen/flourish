@@ -66,10 +66,16 @@ var rootResolver = {
   }
 };
 
-app.use('/graphql', graphqlHTTP({
+app.get('/graphql', graphqlHTTP({
   schema: flourishSchema,
   rootValue: rootResolver,
   graphiql: true
+}));
+
+app.post('/graphql', graphqlHTTP({
+  schema: flourishSchema,
+  rootValue: rootResolver,
+  graphiql: false
 }));
 
 app.listen(3000, () => console.log('Server running on port 3000'));
