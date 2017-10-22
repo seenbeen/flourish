@@ -194,7 +194,16 @@ const rootResolver = {
 									   slots: _.map(sets,set => ({ 
 									        netAmount: set.amount,
       										loanStatus: set.status,
-      										settleReason: ['College Fund', 'Auto Fund', 'Medical Fund', 'Pet Fund'][_.random(0, 3)],
+      										settleReason: (() => {
+	if (set.amount > 0) {
+		return sched.purpose;
+	}
+	if (set.status === 'COMPLETED') {	
+		return ['College Fund', 'Auto Fund', 'Medical Fund', 'Pet Fund'][_.random(0, 3)];
+	} else {
+		return null;
+	}
+	})(),
       										settleBy: set.settleBy,
       										settledOn: set.status === 'COMPLETED'? set.settleBy:null,
       										settledWith: (() => {
