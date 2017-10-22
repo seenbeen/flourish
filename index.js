@@ -14,8 +14,8 @@ const flourishSchema = buildSchema(`
     me(userId: String!): User!
   }
   type Mutation {
-    createLoan(info: LoanCreationInfo!): Loan!
-    initiateSettlement(settlementHash: String!): Loan!
+    createLoan: Boolean!
+    initiateSettlement(settlementHash: String!): Boolean!
     tickSettlements: Boolean!
     happyState: Boolean!
   }
@@ -112,11 +112,19 @@ const MOCK_ME = {
 const MOCK_TRUST = { trust: (args, context) => Promise.resolve(context.trust).then(res => res) };
 
 function createLoanResolver({ info }, context) {
-  return MOCK_LOAN;
+  return connectFlourishDB()
+    .then(con => con.query(`INSERT INTO schedule (id, purpose, userId, startDate, loanTotal) VALUES (2, "Car Breakdown", 1, "${moment().format('YYYY-MM-DD HH:mm:ss')}",500)`)
+      .then(() => con.query(`insert into settlement (amount, status, scheduleId, settleBy) values (-125, 'NOT_STARTED', 2, "${moment().add(0,'week').format('YYYY-MM-DD HH:mm:ss')}");`))
+      .then(() => con.query(`insert into settlement (amount, status, scheduleId, settleBy) values (-125, 'NOT_STARTED', 2, "${moment().add(1,'week').format('YYYY-MM-DD HH:mm:ss')}");`))
+      .then(() => con.query(`insert into settlement (amount, status, scheduleId, settleBy) values (500, 'NOT_STARTED', 2, "${moment().add(2,'week').format('YYYY-MM-DD HH:mm:ss')}");`))
+      .then(() => con.query(`insert into settlement (amount, status, scheduleId, settleBy) values (-125, 'NOT_STARTED', 2, "${moment().add(3,'week').format('YYYY-MM-DD HH:mm:ss')}");`))
+      .then(() => con.query(`insert into settlement (amount, status, scheduleId, settleBy) values (-125, 'NOT_STARTED', 2, "${moment().add(4,'week').format('YYYY-MM-DD HH:mm:ss')}");`))
+    )
+    .then(() => true);
 }
 
 function initiateSettlementResolver({ settlementHash }, context) {
-  return MOCK_LOAN;
+  return true;
 }
 
 function tickSettlementsResolver(args, context) {
@@ -143,7 +151,10 @@ const HAPPY_USERS = [
 
 
 function happyStateResolver() {
-  return true; 
+  return connectFlourishDB()
+    .then(con => con.query('DELETE FROM schedule where id = 2')
+	.then(() => con.query('DELETE FROM settlement where scheduleId = 2')))
+    .then(() => true); 
   const Temp = connectFlourishDB()
     .then(con => con.query('DELETE FROM schedule;')
       .then(() => Promise.all(_.map(HAPPY_SCHED, ({ purpose, weeksBack, id }) => con.query(`INSERT INTO schedule (id, purpose, userId, startDate, loanTotal) VALUES (${id}, "${purpose}", 1, "${moment().subtract('week', weeksBack).format('YYYY-MM-DD HH:mm:ss')}", 500);`))))
