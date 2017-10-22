@@ -52,7 +52,7 @@ const flourishSchema = buildSchema(`
     NOT_STARTED
     FAILED
     PENDING
-    SUCCEEDED
+    COMPLETED
   }
 `);
 
@@ -85,16 +85,9 @@ function connectFlourishDB() {
   return connectDB('root','root','flourishdb');
 }
 
-const MOCK_ME = {
-  firstName: 'Seenbeen',
-  lastName: 'Na',
-  activeLoans: [],
-  pastLoans: []
-};
-
 const MOCK_LOAN = {
-  slots: [
-    { 
+  slots: _.times(5,
+    ()=>({ 
       netAmount: -250,
       loanStatus: "NOT_STARTED",
       settleReason: null,
@@ -102,11 +95,18 @@ const MOCK_LOAN = {
       settledOn: null,
       settledWith: null,
       settlementHash: null
-    }
-  ],
+    }))
+  ,
   amount: 500,
   purpose: "Because I can",
   startDate: moment().toISOString()
+};
+
+const MOCK_ME = {
+  firstName: 'Seenbeen',
+  lastName: 'Na',
+  activeLoans: [MOCK_LOAN,MOCK_LOAN],
+  pastLoans: [MOCK_LOAN,MOCK_LOAN,MOCK_LOAN,MOCK_LOAN]
 };
 
 const MOCK_TRUST = { trust: (args, context) => Promise.resolve(context.trust).then(res => res) };
@@ -141,13 +141,18 @@ const HAPPY_USERS = [
   { id: 5, firstName: 'George', lastName: 'Lander', trust: 100, mastercardId: 'GL123' }
 ];
 
+
 function happyStateResolver() {
-  return connectFlourishDB()
+  return true; 
+  const Temp = connectFlourishDB()
     .then(con => con.query('DELETE FROM schedule;')
       .then(() => Promise.all(_.map(HAPPY_SCHED, ({ purpose, weeksBack, id }) => con.query(`INSERT INTO schedule (id, purpose, userId, startDate, loanTotal) VALUES (${id}, "${purpose}", 1, "${moment().subtract('week', weeksBack).format('YYYY-MM-DD HH:mm:ss')}", 500);`))))
       .then(() => con.query('DELETE FROM user;'))
       .then(() => Promise.all(_.map(HAPPY_USERS, r => 
         con.query(`INSERT INTO user (id, firstName, lastName, trust, mastercardId) VALUES (${r.id},"${r.firstName}","${r.lastName}",${r.trust},"${r.mastercardId}")`))))
+      .then(() => con.query('DELETE FROM settlement'))
+      .then(() => Promise.all(_.map(HAPPY_SETTLEMENTS, r =>
+        con.query(`INSERT INTO settlement (amount,fromUser,toUser,status,scheduleId,settleBy) VALUES (${amount},${fromUser},${toUser},"COMPLETED",${scheduleId},"${settleBy}");`))))
     )
     .then(res => true); 
 }
@@ -160,10 +165,41 @@ const rootResolver = {
       .catch(err => `RIP ${err}`);
   },
   me: (args, context) => {
-    return new Promise((resolve,reject) => {
-      context.trust = 1338;
-      return resolve(_.extend({},MOCK_ME,MOCK_TRUST));
-    }).then(res => res);
+    const ans = {};
+    return connectFlourishDB()
+      .then(con => con.query('SELECT * FROM user where id = 1;')
+	.then(res => {
+          ans.firstName = res[0].firstName;
+          ans.lastName = res[0].lastName;
+          ans.pastLoans = [];
+	  ans.activeLoans = [];
+	  ans.trust = res[0].trust;
+          return con.query('SELECT * FROM schedule where userId = 1')
+	    .then(res => Promise.all(_.map(res, (sched) => con.query(`SELECT * FROM settlement where scheduleId = ${sched.id}`)
+									.then(sets => { ans.activeLoans.push({
+									   amount: 500,
+									   startDate: sched.startDate,
+									   purpose: sched.purpose,
+									   slots: _.map(sets,set => ({ 
+									        netAmount: set.amount,
+      										loanStatus: set.status,
+      										settleReason: ['College Fund', 'Auto Fund', 'Medical Fund', 'Pet Fund'][_.random(0, 3)],
+      										settleBy: set.settleBy,
+      										settledOn: set.status === 'COMPLETED'? set.settleBy:null,
+      										settledWith: (() => {
+										  if (set.status === 'COMPLETED') {
+										    if (set.amount > 0) {
+											return ['Jane','Joy','Sam','George'];
+										    } else {
+											return [['Jane','Joy','Sam','George'][_.random(0, 3)]];
+										    }
+										  } else {
+								    	            return null; 
+										  }
+										})(),
+      										settlementHash: set.blockHash
+									})) }); } ).then(()=>ans) )));
+  	}).then(()=>{console.log(JSON.stringify(ans)); return ans}));
   },
   createLoan: createLoanResolver,
   initiateSettlement: initiateSettlementResolver,
