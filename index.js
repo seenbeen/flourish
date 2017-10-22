@@ -4,6 +4,7 @@ const { graphql, buildSchema } = require('graphql');
 const graphqlHTTP = require('express-graphql');
 const mysql = require('mysql');
 const _ = require('lodash');
+const moment = require('moment');
 
 const app = express();
 
@@ -16,6 +17,7 @@ const flourishSchema = buildSchema(`
     createLoan(info: LoanCreationInfo!): Loan!
     initiateSettlement(settlementHash: String!): Loan!
     tickSettlements: Boolean!
+    happyState: Boolean!
   }
 
   type User {
@@ -90,7 +92,65 @@ const MOCK_ME = {
   pastLoans: []
 };
 
+const MOCK_LOAN = {
+  slots: [
+    { 
+      netAmount: -250,
+      loanStatus: "NOT_STARTED",
+      settleReason: null,
+      settleBy: "SOME DATE",
+      settledOn: null,
+      settledWith: null,
+      settlementHash: null
+    }
+  ],
+  amount: 500,
+  purpose: "Because I can",
+  startDate: moment().toISOString()
+};
+
 const MOCK_TRUST = { trust: (args, context) => Promise.resolve(context.trust).then(res => res) };
+
+function createLoanResolver({ info }, context) {
+  return MOCK_LOAN;
+}
+
+function initiateSettlementResolver({ settlementHash }, context) {
+  return MOCK_LOAN;
+}
+
+function tickSettlementsResolver(args, context) {
+  return true;
+}
+
+const HAPPY_SCHED = [ { purpose: "College Funds",
+			weeksBack: 25, id: 1 },
+		      { purpose: "Rent",
+			weeksBack: 20, id: 2 },
+		      { purpose: "Emergency Medical Funds",
+			weeksBack: 15, id: 3 },
+		      { purpose: "Rent",
+			weeksBack: 10, id: 4 },
+		      { purpose: "Pet Vet Visit",
+			weeksBack: 5, id: 5 } ];
+const HAPPY_USERS = [
+  { id: 1, firstName: 'Jason', lastName: 'Du', trust: 100, mastercardId: 'JD123' },
+  { id: 2, firstName: 'Jane', lastName: 'Smith', trust: 100, mastercardId: 'JS123' },
+  { id: 3, firstName: 'Joy', lastName: 'Wong', trust: 100, mastercardId: 'JW123' },
+  { id: 4, firstName: 'Sam', lastName: 'Hills', trust: 100, mastercardId: 'SH123' },
+  { id: 5, firstName: 'George', lastName: 'Lander', trust: 100, mastercardId: 'GL123' }
+];
+
+function happyStateResolver() {
+  return connectFlourishDB()
+    .then(con => con.query('DELETE FROM schedule;')
+      .then(() => Promise.all(_.map(HAPPY_SCHED, ({ purpose, weeksBack, id }) => con.query(`INSERT INTO schedule (id, purpose, userId, startDate, loanTotal) VALUES (${id}, "${purpose}", 1, "${moment().subtract('week', weeksBack).format('YYYY-MM-DD HH:mm:ss')}", 500);`))))
+      .then(() => con.query('DELETE FROM user;'))
+      .then(() => Promise.all(_.map(HAPPY_USERS, r => 
+        con.query(`INSERT INTO user (id, firstName, lastName, trust, mastercardId) VALUES (${r.id},"${r.firstName}","${r.lastName}",${r.trust},"${r.mastercardId}")`))))
+    )
+    .then(res => true); 
+}
 
 const rootResolver = {
   hello: () => {
@@ -104,7 +164,11 @@ const rootResolver = {
       context.trust = 1338;
       return resolve(_.extend({},MOCK_ME,MOCK_TRUST));
     }).then(res => res);
-  }
+  },
+  createLoan: createLoanResolver,
+  initiateSettlement: initiateSettlementResolver,
+  tickSettlements: tickSettlementsResolver,
+  happyState: happyStateResolver
 };
 
 app.get('/graphql', graphqlHTTP({
