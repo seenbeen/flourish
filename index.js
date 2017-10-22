@@ -12,6 +12,7 @@ const protobuf = require("protobufjs");
 
 const async = require('async'), encoding = 'hex', fs = require('fs');
 
+const mst1ID = 1297306673;
 
 function getProperties(obj) {
   var ret = [];
@@ -46,7 +47,7 @@ function authenticateMasterCard() {
           appID = nested[0];
           msgClassDef = root.lookupType(appID + "." + nested[1]);
           console.log('initialized');
-	  return resolve(appID,msgClassDef);
+	  return resolve({appID,msgClassDef});
         } else {
           console.log('could not read message class def from', protoFile);
         }
@@ -230,19 +231,30 @@ const HAPPY_USERS = [
 function happyStateResolver() {
   return connectFlourishDB()
     .then(con => con.query('DELETE FROM schedule where id = 2')
-	.then(() => con.query('DELETE FROM settlement where scheduleId = 2')))
+	.then(() => con.query('DELETE FROM settlement where scheduleId = 2'))
+        .then(() => authenticateMasterCard()
+          .then(({appID,msgClassDef}) => new Promise((resolve, reject) => {
+            var payload = { from: 'JS123', to: 'SH123', amountMinorUnits: 250, currency: 'USD', description: 'Standard Loan Payment', nonce: new Date().getTime() };
+            var errMsg = msgClassDef.verify(payload);
+            if (errMsg) {
+              return reject(errMsg);
+            } else {
+              var message = msgClassDef.create(payload);
+              blockchain.TransactionEntry.create({
+                "app": mst1ID,
+                "encoding": encoding,
+                "value": msgClassDef.encode(message).finish().toString(encoding)
+              }, (err, result) => {
+	        if (err) {
+		  return reject(err);
+                } else {
+                  return resolve(result.hash);
+                }
+  	      });
+            }
+          })))
+        .then(hashId => con.query(`UPDATE settlement set blockHash="${hashId}" WHERE id=7`)))
     .then(() => true); 
-  const Temp = connectFlourishDB()
-    .then(con => con.query('DELETE FROM schedule;')
-      .then(() => Promise.all(_.map(HAPPY_SCHED, ({ purpose, weeksBack, id }) => con.query(`INSERT INTO schedule (id, purpose, userId, startDate, loanTotal) VALUES (${id}, "${purpose}", 1, "${moment().subtract('week', weeksBack).format('YYYY-MM-DD HH:mm:ss')}", 500);`))))
-      .then(() => con.query('DELETE FROM user;'))
-      .then(() => Promise.all(_.map(HAPPY_USERS, r => 
-        con.query(`INSERT INTO user (id, firstName, lastName, trust, mastercardId) VALUES (${r.id},"${r.firstName}","${r.lastName}",${r.trust},"${r.mastercardId}")`))))
-      .then(() => con.query('DELETE FROM settlement'))
-      .then(() => Promise.all(_.map(HAPPY_SETTLEMENTS, r =>
-        con.query(`INSERT INTO settlement (amount,fromUser,toUser,status,scheduleId,settleBy) VALUES (${amount},${fromUser},${toUser},"COMPLETED",${scheduleId},"${settleBy}");`))))
-    )
-    .then(res => true); 
 }
 
 const rootResolver = {
