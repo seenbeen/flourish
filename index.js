@@ -62,8 +62,6 @@ const flourishSchema = buildSchema(`
   type Query {
     hello: String
     me(userId: String!): User!
-  }
-  type Mutation {
     createLoan: Boolean!
     initiateSettlement(settlementHash: String!): Boolean!
     confirmSettlement(settlementHash: String!): Boolean!
