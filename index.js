@@ -272,11 +272,11 @@ const rootResolver = {
           ans.pastLoans = [];
 	  ans.activeLoans = [];
 	  ans.trust = res[0].trust;
-          return con.query('SELECT * FROM schedule where userId = 1')
+          return con.query('SELECT * FROM schedule where userId = 1 order by id desc')
 	    .then(res => Promise.all(_.map(res, (sched) => con.query(`SELECT * FROM settlement where scheduleId = ${sched.id}`)
 									.then(sets => { ans.activeLoans.push({
 									   amount: 500,
-									   startDate: sched.startDate,
+									   startDate: moment(sched.startDate).format("MMM D"),
 									   purpose: sched.purpose,
 									   slots: _.map(sets,set => ({ 
 									        netAmount: set.amount,
@@ -291,8 +291,8 @@ const rootResolver = {
 		return null;
 	}
 	})(),
-      										settleBy: set.settleBy,
-      										settledOn: set.status === 'COMPLETED'? set.settleBy:null,
+      										settleBy: moment(set.settleBy).format("MMM D"),
+      										settledOn: set.status === 'COMPLETED'? moment(set.settleBy).format("MMM D"):null,
       										settledWith: (() => {
 										  if (set.status === 'COMPLETED') {
 										    if (set.amount > 0) {
