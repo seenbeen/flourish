@@ -3,20 +3,54 @@ const Promise = require('es6-promise').Promise;
 const { graphql, buildSchema } = require('graphql');
 const graphqlHTTP = require('express-graphql');
 const mysql = require('mysql');
+const _ = require('lodash');
 
 const app = express();
 
 const flourishSchema = buildSchema(`
   type Query {
     hello: String
-    user(id: Int!): User
+    me(userId: String!): User!
   }
+  type Mutation {
+    createLoan(info: LoanCreationInfo!): Loan!
+    initiateSettlement(settlementHash: String!): Loan!
+    tickSettlements: Boolean!
+  }
+
   type User {
     firstName: String!
     lastName: String!
+    trust: Int!
+    activeLoans: [Loan!]!
+    pastLoans: [Loan!]!
+  }
+  type Loan {
+    slots: [LoanSlot!]!
+    amount: Int!
+    purpose: String!
+    startDate: String! # ISO 8601
+  }
+  type LoanSlot {
+    netAmount: Int!
+    settlementHash: String
+    loanStatus: LoanStatus!
+    settledWith: [String!]
+    settledOn: String # ISO 8601
+    settleBy: String! # ISO 8601
+    settleReason: String
+  }
+
+  input LoanCreationInfo {
     userId: String!
-    age: Int!
-    favoriteAminal: String
+    startDate: String! # ISO 8601
+  }
+
+  enum LoanStatus {
+    NOT_STARTED
+    FAILED
+    PENDING
+    SUCCEEDED
   }
 `);
 
@@ -49,19 +83,26 @@ function connectFlourishDB() {
   return connectDB('root','root','flourishdb');
 }
 
-var rootResolver = {
+const MOCK_ME = {
+  firstName: 'Seenbeen',
+  lastName: 'Na',
+  activeLoans: [],
+  pastLoans: []
+};
+
+const MOCK_TRUST = { trust: (args, context) => Promise.resolve(context.trust).then(res => res) };
+
+const rootResolver = {
   hello: () => {
     return connectFlourishDB()
       .then(con => con.query('SELECT * FROM user;'))
       .then(res => res[0].firstName)
       .catch(err => `RIP ${err}`);
   },
-  user: (args) => {
+  me: (args, context) => {
     return new Promise((resolve,reject) => {
-      if (args.id == 1337) {
-        return resolve({ firstName: "Seenbeen", lastName: "Na", userId: "1337", age: 21, favoriteAminal: "IS IT A BEAR" }); 
-      }
-      return resolve({ firstName: "Unknown", lastName: "Unknown", userId: "Unknown", age: 0 });
+      context.trust = 1338;
+      return resolve(_.extend({},MOCK_ME,MOCK_TRUST));
     }).then(res => res);
   }
 };
