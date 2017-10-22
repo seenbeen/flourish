@@ -1,0 +1,18 @@
+// Mastercard Blockchain Settlement Services Protocol
+
+syntax = "proto3";
+package P003;
+
+message Request {
+	string to = 1;
+	string from = 2;
+	int64 amount_minor_units = 3;
+	string currency = 4;
+	uint64 nonce = 5;
+	string description = 6;
+}
+
+message Settlement {
+	bytes hash_reference = 1;
+	bytes signature = 2;
+}

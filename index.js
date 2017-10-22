@@ -6,6 +6,55 @@ const mysql = require('mysql');
 const _ = require('lodash');
 const moment = require('moment');
 
+const blockchain = require('mastercard-blockchain');
+const MasterCardAPI = blockchain.MasterCardAPI;
+const protobuf = require("protobufjs");
+
+const async = require('async'), encoding = 'hex', fs = require('fs');
+
+
+function getProperties(obj) {
+  var ret = [];
+  for (var name in obj) {
+    if (obj.hasOwnProperty(name)) {
+      ret.push(name);
+    }
+  }
+  return ret;
+}
+
+
+function guessNested(root) {
+  var props = getProperties(root.nested);
+  var firstChild = getProperties(root.nested[props[0]].nested);
+  return [props[0], firstChild[0]];
+}
+
+function authenticateMasterCard() {
+  return new Promise((resolve, reject) => {
+    var authentication = new MasterCardAPI.OAuth('Z8uM_eLGoiZrbxdFVXwRdmvbCXcy2WxZlAEsvMaP8dd2fcd1!bb6adc6b34f4462c8adcabfde61bce4e0000000000000000', 'flourish.p12', 'keyalias', 'keystorepassword');
+    MasterCardAPI.init({
+      sandbox: true,
+      authentication: authentication
+    });
+    protobuf.load('settle.proto', (err, root) => {
+      if (err) {
+        console.log('error', err);
+      } else {
+        var nested = guessNested(root);
+        if (nested && 2 == nested.length) {
+          appID = nested[0];
+          msgClassDef = root.lookupType(appID + "." + nested[1]);
+          console.log('initialized');
+	  return resolve(appID,msgClassDef);
+        } else {
+          console.log('could not read message class def from', protoFile);
+        }
+      }
+    });
+  });
+}
+
 const app = express();
 
 const flourishSchema = buildSchema(`
@@ -16,6 +65,7 @@ const flourishSchema = buildSchema(`
   type Mutation {
     createLoan: Boolean!
     initiateSettlement(settlementHash: String!): Boolean!
+    confirmSettlement(settlementHash: String!): Boolean!
     tickSettlements: Boolean!
     happyState: Boolean!
   }
@@ -124,7 +174,34 @@ function createLoanResolver({ info }, context) {
 }
 
 function initiateSettlementResolver({ settlementHash }, context) {
-  return true;
+  return authenticateMasterCard()
+    .then((appID,msgClassDef) => new Promise((resolve, reject) => {
+      blockchain.Settle.create({ "encoding": encoding, "hash": settlementHash }, (err, result) => {
+	  if (err) {
+            return resolve(false);
+          } else {
+            return resolve(true);
+          }
+      });
+    }))
+   .then(result => result);
+}
+
+function confirmSettlementResolver({ settlementHash }, context) {
+  return authenticateMasterCard()
+    .then((appID,msgClassDef) => new Promise((resolve, reject) => {
+      blockchain.Settle.create({ "encoding": encoding, "hash": settlementHash }, (err, result) => {
+          if (err) {
+            if (err.rawErrorData.message === `${settlementHash} is already settled.`) {
+               return resolve(true);
+            }
+            return resolve(false);
+          } else {
+            return resolve(true);
+          }
+      });
+    }))
+   .then(result => result);
 }
 
 function tickSettlementsResolver(args, context) {
@@ -223,6 +300,7 @@ const rootResolver = {
   },
   createLoan: createLoanResolver,
   initiateSettlement: initiateSettlementResolver,
+  confirmSettlement: confirmSettlementResolver,
   tickSettlements: tickSettlementsResolver,
   happyState: happyStateResolver
 };

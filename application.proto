@@ -1,0 +1,9 @@
+syntax = "proto3";
+package FLSH;
+
+option java_package = "com.mastercard.blockchain";
+option java_outer_classname = "SettleProtocolBuffer";
+
+message Message {
+	bytes data = 1;
+}
